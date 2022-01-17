@@ -17,6 +17,7 @@ package sub
 import (
 	"context"
 	"fmt"
+	"math/rand"
 	"net"
 	"os"
 	"os/signal"
@@ -74,6 +75,7 @@ var (
 	tlsEnable bool
 
 	kcpDoneCh chan struct{}
+	frpDoneCh chan int
 )
 
 func init() {
@@ -105,7 +107,7 @@ var rootCmd = &cobra.Command{
 		}
 
 		// Do not show command usage here.
-		err := runClient(cfgFile)
+		err := RunClient(cfgFile)
 		if err != nil {
 			fmt.Println(err)
 			os.Exit(1)
@@ -126,6 +128,11 @@ func handleSignal(svr *client.Service) {
 	<-ch
 	svr.GracefulClose(500 * time.Millisecond)
 	close(kcpDoneCh)
+}
+
+func handleFrpSignal(svr *client.Service) {
+	<-frpDoneCh
+	svr.Close()
 }
 
 func parseClientCommonCfgFromCmd() (cfg config.ClientCommonConf, err error) {
@@ -164,12 +171,23 @@ func parseClientCommonCfgFromCmd() (cfg config.ClientCommonConf, err error) {
 	return
 }
 
-func runClient(cfgFilePath string) error {
+func RunClient(cfgFilePath string) error {
 	cfg, pxyCfgs, visitorCfgs, err := config.ParseClientConfig(cfgFilePath)
 	if err != nil {
 		return err
 	}
 	return startService(cfg, pxyCfgs, visitorCfgs, cfgFilePath)
+}
+
+func CloseClient() {
+	if frpDoneCh == nil {
+		return
+	}
+	select {
+	case frpDoneCh <- rand.Int():
+	default:
+		fmt.Println("dropped")
+	}
 }
 
 func startService(
@@ -204,6 +222,9 @@ func startService(
 	// Capture the exit signal if we use kcp.
 	if cfg.Protocol == "kcp" {
 		go handleSignal(svr)
+	} else {
+		frpDoneCh = make(chan int)
+		go handleFrpSignal(svr)
 	}
 
 	err = svr.Run()

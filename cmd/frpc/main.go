@@ -14,6 +14,8 @@
 
 package main
 
+import "C"
+
 import (
 	"math/rand"
 	"time"
@@ -29,4 +31,16 @@ func main() {
 	rand.Seed(time.Now().UnixNano())
 
 	sub.Execute()
+}
+
+//export FrpcRun
+func FrpcRun(cfgFilePath string) {
+	crypto.DefaultSalt = "frp"
+	rand.Seed(time.Now().UnixNano())
+	sub.RunClient(cfgFilePath)
+}
+
+//export FrpcClose
+func FrpcClose() {
+	sub.CloseClient()
 }
